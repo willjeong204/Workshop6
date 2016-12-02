@@ -5,6 +5,7 @@ var readDocument = database.readDocument;
 var bodyParser = require('body-parser');
 // Imports the express Node module.
 var express = require('express');
+
 // Creates an Express server.
 var app = express();
 
@@ -87,6 +88,7 @@ function getUserIdFromToken(authorizationLine) {
     return -1;
   }
 }
+
 var StatusUpdateSchema = require('./schemas/statusupdate.json');
 var validate = require('express-jsonschema').validate;
 var writeDocument = database.writeDocument;
@@ -99,36 +101,36 @@ app.use(bodyParser.json());
 * Adds a new status update to the database.
 */
 function postStatusUpdate(user, location, contents) {
-// If we were implementing this for real on an actual server, we would check
-// that the user ID is correct & matches the authenticated user. But since
-// we're mocking it, we can be less strict.
-// Get the current UNIX time.
-var time = new Date().getTime();
-// The new status update. The database will assign the ID for us.
-var newStatusUpdate = {
-"likeCounter": [],
-"type": "statusUpdate",
-"contents": {
-"author": user,
-"postDate": time,
-"location": location,
-"contents": contents,
-"likeCounter": []
-},
-// List of comments on the post
-"comments": []
-};
-// Add the status update to the database.
-// Returns the status update w/ an ID assigned.
-newStatusUpdate = addDocument('feedItems', newStatusUpdate);
-// Add the status update reference to the front of the current user's feed.
-var userData = readDocument('users', user);
-var feedData = readDocument('feeds', userData.feed);
-feedData.contents.unshift(newStatusUpdate._id);
-// Update the feed object.
-writeDocument('feeds', feedData);
-// Return the newly-posted object.
-return newStatusUpdate;
+  // If we were implementing this for real on an actual server, we would check
+  // that the user ID is correct & matches the authenticated user. But since
+  // we're mocking it, we can be less strict.
+  // Get the current UNIX time.
+  var time = new Date().getTime();
+  // The new status update. The database will assign the ID for us.
+  var newStatusUpdate = {
+    "likeCounter": [],
+    "type": "statusUpdate",
+    "contents": {
+      "author": user,
+      "postDate": time,
+      "location": location,
+      "contents": contents,
+      "likeCounter": []
+    },
+    // List of comments on the post
+    "comments": []
+  };
+  // Add the status update to the database.
+  // Returns the status update w/ an ID assigned.
+  newStatusUpdate = addDocument('feedItems', newStatusUpdate);
+  // Add the status update reference to the front of the current user's feed.
+  var userData = readDocument('users', user);
+  var feedData = readDocument('feeds', userData.feed);
+  feedData.contents.unshift(newStatusUpdate._id);
+  // Update the feed object.
+  writeDocument('feeds', feedData);
+  // Return the newly-posted object.
+  return newStatusUpdate;
 }
 // `POST /feeditem { userId: user, location: location, contents: contents }`
 app.post('/feeditem',
@@ -178,130 +180,191 @@ app.listen(3000, function () {
 });
 // Update a feed item.
 app.put('/feeditem/:feeditemid/content', function(req, res) {
-var fromUser = getUserIdFromToken(req.get('Authorization'));
-var feedItemId = req.params.feeditemid;
-var feedItem = readDocument('feedItems', feedItemId);
-// Check that the requester is the author of this feed item.
-if (fromUser === feedItem.contents.author) {
-// Check that the body is a string, and not something like a JSON object.
-// We can't use JSON validation here, since the body is simply text!
-if (typeof(req.body) !== 'string') {
-// 400: Bad request.
-res.status(400).end();
-return;
-}
-// Update text content of update.
-feedItem.contents.contents = req.body;
-writeDocument('feedItems', feedItem);
-res.send(getFeedItemSync(feedItemId));
-} else {
-// 401: Unauthorized.
-res.status(401).end();
-}
-});
-/**
-* Delete a feed item.
-*/
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var feedItemId = req.params.feeditemid;
+  var feedItem = readDocument('feedItems', feedItemId);
+  // Check that the requester is the author of this feed item.
+  if (fromUser === feedItem.contents.author) {
+    // Check that the body is a string, and not something like a JSON object.
+    // We can't use JSON validation here, since the body is simply text!
+    if (typeof(req.body) !== 'string') {
+      // 400: Bad request.
+      res.status(400).end();
+      return;
+    }
+    // Update text content of update.
+    feedItem.contents.contents = req.body;
+    writeDocument('feedItems', feedItem);
+    res.send(getFeedItemSync(feedItemId));
+  } else {
+    // 401: Unauthorized.
+    res.status(401).end();
+  }
+  });
+  /**
+  * Delete a feed item.
+  */
 app.delete('/feeditem/:feeditemid', function(req, res) {
-var fromUser = getUserIdFromToken(req.get('Authorization'));
-// Convert from a string into a number.
-var feedItemId = parseInt(req.params.feeditemid, 10);
-var feedItem = readDocument('feedItems', feedItemId);
-// Check that the author of the post is requesting the delete.
-if (feedItem.contents.author === fromUser) {
-database.deleteDocument('feedItems', feedItemId);
-// Remove references to this feed item from all other feeds.
-var feeds = database.getCollection('feeds');
-var feedIds = Object.keys(feeds);
-feedIds.forEach((feedId) => {
-var feed = feeds[feedId];
-var itemIdx = feed.contents.indexOf(feedItemId);
-if (itemIdx !== -1) {
-// Splice out of array.
-feed.contents.splice(itemIdx, 1);
-// Update feed.
-database.writeDocument('feeds', feed);
-}
-});
-// Send a blank response to indicate success.
-res.send();
-} else {
-// 401: Unauthorized.
-res.status(401).end();
-}
-});
-// Like a feed item.
-app.put('/feeditem/:feeditemid/likelist/:userid', function(req, res) {
-var fromUser = getUserIdFromToken(req.get('Authorization'));
-// Convert params from string to number.
-var feedItemId = parseInt(req.params.feeditemid, 10);
-var userId = parseInt(req.params.userid, 10);
-if (fromUser === userId) {
-var feedItem = readDocument('feedItems', feedItemId);
-// Add to likeCounter if not already present.
-if (feedItem.likeCounter.indexOf(userId) === -1) {
-feedItem.likeCounter.push(userId);
-writeDocument('feedItems', feedItem);
-}
-// Return a resolved version of the likeCounter
-res.send(feedItem.likeCounter.map((userId) =>
-readDocument('users', userId)));
-} else {
-// 401: Unauthorized.
-res.status(401).end();
-}
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  // Convert from a string into a number.
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var feedItem = readDocument('feedItems', feedItemId);
+  // Check that the author of the post is requesting the delete.
+  if (feedItem.contents.author === fromUser) {
+    database.deleteDocument('feedItems', feedItemId);
+    // Remove references to this feed item from all other feeds.
+    var feeds = database.getCollection('feeds');
+    var feedIds = Object.keys(feeds);
+    feedIds.forEach((feedId) => {
+      var feed = feeds[feedId];
+      var itemIdx = feed.contents.indexOf(feedItemId);
+      if (itemIdx !== -1) {
+        // Splice out of array.
+        feed.contents.splice(itemIdx, 1);
+        // Update feed.
+        database.writeDocument('feeds', feed);
+      }
+    });
+    // Send a blank response to indicate success.
+    res.send();
+  } else {
+    // 401: Unauthorized.
+    res.status(401).end();
+  }
+  });
+  // Like a feed item.
+  app.put('/feeditem/:feeditemid/likelist/:userid', function(req, res) {
+    var fromUser = getUserIdFromToken(req.get('Authorization'));
+    // Convert params from string to number.
+    var feedItemId = parseInt(req.params.feeditemid, 10);
+    var userId = parseInt(req.params.userid, 10);
+    if (fromUser === userId) {
+      var feedItem = readDocument('feedItems', feedItemId);
+      // Add to likeCounter if not already present.
+      if (feedItem.likeCounter.indexOf(userId) === -1) {
+        feedItem.likeCounter.push(userId);
+        writeDocument('feedItems', feedItem);
+      }
+      // Return a resolved version of the likeCounter
+      res.send(feedItem.likeCounter.map((userId) =>
+      readDocument('users', userId)));
+    } else {
+      // 401: Unauthorized.
+      res.status(401).end();
+    }
 });
 // Unlike a feed item.
 app.delete('/feeditem/:feeditemid/likelist/:userid', function(req, res) {
-var fromUser = getUserIdFromToken(req.get('Authorization'));
-// Convert params from string to number.
-var feedItemId = parseInt(req.params.feeditemid, 10);
-var userId = parseInt(req.params.userid, 10);
-if (fromUser === userId) {
-var feedItem = readDocument('feedItems', feedItemId);
-var likeIndex = feedItem.likeCounter.indexOf(userId);
-// Remove from likeCounter if present
-if (likeIndex !== -1) {
-feedItem.likeCounter.splice(likeIndex, 1);
-writeDocument('feedItems', feedItem);
-}
-// Return a resolved version of the likeCounter
-// Note that this request succeeds even if the
-// user already unliked the request!
-res.send(feedItem.likeCounter.map((userId) =>
-readDocument('users', userId)));
-} else {
-// 401: Unauthorized.
-res.status(401).end();
-}
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  // Convert params from string to number.
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var userId = parseInt(req.params.userid, 10);
+  if (fromUser === userId) {
+    var feedItem = readDocument('feedItems', feedItemId);
+    var likeIndex = feedItem.likeCounter.indexOf(userId);
+    // Remove from likeCounter if present
+    if (likeIndex !== -1) {
+      feedItem.likeCounter.splice(likeIndex, 1);
+      writeDocument('feedItems', feedItem);
+    }
+    // Return a resolved version of the likeCounter
+    // Note that this request succeeds even if the
+    // user already unliked the request!
+    res.send(feedItem.likeCounter.map((userId) =>
+    readDocument('users', userId)));
+    } else {
+      // 401: Unauthorized.
+      res.status(401).end();
+    }
 });
 // Search for feed item
 app.post('/search', function(req, res) {
-var fromUser = getUserIdFromToken(req.get('Authorization'));
-var user = readDocument('users', fromUser);
-if (typeof(req.body) === 'string') {
-// trim() removes whitespace before and after the query.
-// toLowerCase() makes the query lowercase.
-var queryText = req.body.trim().toLowerCase();
-// Search the user's feed.
-var feedItemIDs = readDocument('feeds', user.feed).contents;
-// "filter" is like "map" in that it is a magic method for
-// arrays. It takes an anonymous function, which it calls
-// with each item in the array. If that function returns 'true',
-// it will include the item in a return array. Otherwise, it will
-// not.
-// Here, we use filter to return only feedItems that contain the
-// query text.
-// Since the array contains feed item IDs, we later map the filtered
-// IDs to actual feed item objects.
-res.send(feedItemIDs.filter((feedItemID) => {
-var feedItem = readDocument('feedItems', feedItemID);
-return feedItem.contents.contents
-.toLowerCase()
-.indexOf(queryText) !== -1;
-}).map(getFeedItemSync));
-} else {
-// 400: Bad Request.
-res.status(400).end();
-}
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var user = readDocument('users', fromUser);
+  if (typeof(req.body) === 'string') {
+    // trim() removes whitespace before and after the query.
+    // toLowerCase() makes the query lowercase.
+    var queryText = req.body.trim().toLowerCase();
+    // Search the user's feed.
+    var feedItemIDs = readDocument('feeds', user.feed).contents;
+    // "filter" is like "map" in that it is a magic method for
+    // arrays. It takes an anonymous function, which it calls
+    // with each item in the array. If that function returns 'true',
+    // it will include the item in a return array. Otherwise, it will
+    // not.
+    // Here, we use filter to return only feedItems that contain the
+    // query text.
+    // Since the array contains feed item IDs, we later map the filtered
+    // IDs to actual feed item objects.
+    res.send(feedItemIDs.filter((feedItemID) => {
+      var feedItem = readDocument('feedItems', feedItemID);
+      return feedItem.contents.contents
+      .toLowerCase()
+      .indexOf(queryText) !== -1;
+    }).map(getFeedItemSync));
+  } else {
+    // 400: Bad Request.
+    res.status(400).end();
+  }
 });
+var CommentSchema = require('./schemas/comment.json');
+function postComment(feedItemId, userId, content){
+  var comment ={
+    "author": userId,
+    "contents": content,
+    "postDate": new Date().getTime(),
+    "likeCounter": []
+  };
+  var feedItem = readDocument('feedItems', feedItemId);
+  feedItem.comments.push(comment);
+  writeDocument('feedItems', feedItem);
+  return feedItem;
+}
+app.post('/feeditem/:feeditemid/comment', validate({ body: CommentSchema }), function (req, res) {
+   // If this function runs, `req.body` passed JSON validation!
+   var body = req.body;
+   var fromUser = getUserIdFromToken(req.get('Authorization'));
+   // Check if requester is authorized to post this status update.
+   // (The requester must be the author of the update.)
+   if (fromUser === body.userId) {
+     var newUpdate = postComment(req.params.feeditemid, body.userId, body.contents);
+     // When POST creates a new resource, we should tell the client about it
+     // in the 'Location' header and use status code 201.
+     res.status(201);
+     res.set('Location', '/feeditem/' + req.params.feeditemid);
+     // Send the update!
+     res.send(newUpdate);
+   } else {
+     // 401: Unauthorized.
+     res.status(401).end();
+   }
+});
+function likeComment(feedItemId, commentIdx, userId) {
+  var feedItem = readDocument('feedItems', feedItemId);
+  var comment = feedItem.comments[commentIdx];
+  comment.likeCounter.push(parseInt(userId));
+  writeDocument('feedItems', feedItem);
+  comment.author = readDocument('users', comment.author);
+  return comment;
+}
+
+app.put('/feeditem/:feeditemid/comment/:commentid/likelist/:userid', function (req, res) {
+  res.send(likeComment(req.params.feeditemid, req.params.commentid, req.params.userid));
+});
+
+function unlikeComment(feedItemId, commentIdx, userId) {
+  var feedItem = readDocument('feedItems', feedItemId);
+  var comment = feedItem.comments[commentIdx];
+  var userIndex = comment.likeCounter.indexOf(parseInt(userId));
+  if (userIndex !== -1) {
+    comment.likeCounter.splice(userIndex, 1);
+    writeDocument('feedItems', feedItem);
+  }
+  comment.author = readDocument('users', comment.author);
+  return comment;
+ }
+
+ // unlike comment
+ app.delete('/feeditem/:feeditemid/comment/:commentid/likelist/:userid', function (req, res) {
+   res.send(unlikeComment(req.params.feeditemid, req.params.commentid, req.params.userid));
+ });
